@@ -22,7 +22,6 @@ AccelStepper xaxis(AccelStepper::DRIVER, 2, 5);
 AccelStepper yaxis(AccelStepper::DRIVER, 3, 6);
 AccelStepper zaxis(AccelStepper::DRIVER, 4, 7);
 
-bool _justRun = true;
 bool _homingZ = true;
 bool _homingY = true;
 
@@ -56,6 +55,8 @@ void poll_steppers() {
   zaxis.run();
 }
 
+// Moving Logic ================================================================
+
 /// Return true if any one of the drivers are still moving.
 bool isMoving() {
   return (xaxis.isRunning() || yaxis.isRunning() || zaxis.isRunning());
@@ -71,6 +72,8 @@ void move(long x, long y, long z) {
     poll_steppers();
   } while (isMoving());
 }
+
+// Homing Logic ================================================================
 
 long _magnetFoundOn = 0;
 bool firstMagnetFound = false;
@@ -102,6 +105,8 @@ void homingZ() {
   while (_homingZ) {
     double runningTime = millis();
     int zSensorValue = analogRead(HOME_Z_SENSOR_PIN);
+    delayMicroseconds(1000);
+    Serial.println(zSensorValue);
     if (zSensorValue == HOME_Z_VALUE) {
       if (runningTime > 100) {
         move(0, 0, 550);
@@ -115,22 +120,70 @@ void homingZ() {
   }
 }
 
+// =============================================================================
+
+// read Serial until until_c char found, returns true when found else false
+// non-blocking, until_c is returned as last char in String, updates input String with chars read
+bool readStringUntil(String& input, char until_c) {
+  while (Serial.available()) {
+    char c = Serial.read();
+    input += c;
+    if (c == until_c) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// =============================================================================
+
+String _input = "";  // for incoming serial data
+
 void loop() {
 
   homingZ();
   homingY();
-  
-  // if (_justRun) {
-    
-    
-  //   _justRun = false;
-  // }
 
-  // move(-2000, -2000, -2000);
-  // delay(500);
+  // read until find newline
+  if (readStringUntil(_input, '\n') && !_homingZ && !_homingY) {
 
-  // move(-2000, 0, 0);
-  // delay(500);
+    _input.trim();
+    _input.replace("\n", "");
+    
+    Serial.print(F(" got a line of input '"));
+    Serial.print(_input);
+    Serial.println("'");
+
+    bool isItNegative = false;
+    if(_input.startsWith("-")) {
+      isItNegative = true;
+      _input.replace("-", "");
+    }
+    
+    int inputInt = _input.toInt();
+    if(inputInt > 0) {
+      if(isItNegative) {
+        move(-inputInt, -inputInt, -inputInt);  
+      }
+      else {
+        move(inputInt, inputInt, inputInt);  
+      }
+    }
+    else if(_input.equals("hz")) {
+      move(0, 0, 500);
+      _homingZ = true;
+    }
+    else if(_input.equals("hy")) {
+      move(0, 1000, 0);
+      _homingY = true;
+      _magnetFoundOn = 0;
+      firstMagnetFound = false;
+    }
+    else {
+      Serial.println("Ops!");
+    }
+    _input = "";
+  }
 
   // move(0, 0, 2000);
   // delay(500);
